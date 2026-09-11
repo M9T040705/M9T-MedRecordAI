@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>医疗病案智能编码系统</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f0f2f5; color: #1a1a1a; }
+
+/* ===== 登录页 ===== */
+.login-page { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 50%, #3a7ab5 100%); }
+.login-box { background: #fff; border-radius: 12px; padding: 40px; width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.login-box h1 { font-size: 22px; color: #1e3a5f; text-align: center; margin-bottom: 8px; }
+.login-box .subtitle { text-align: center; color: #888; font-size: 13px; margin-bottom: 30px; }
+.login-box label { display: block; font-size: 13px; color: #555; margin-bottom: 6px; margin-top: 16px; }
+.login-box input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; outline: none; transition: border-color 0.2s; }
+.login-box input:focus { border-color: #2d5a87; }
+.login-box button { width: 100%; margin-top: 24px; padding: 12px; background: #2d5a87; color: #fff; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; transition: background 0.2s; }
+.login-box button:hover { background: #1e3a5f; }
+.login-box .demo-accounts { margin-top: 20px; padding: 12px; background: #f5f7fa; border-radius: 6px; font-size: 12px; color: #666; line-height: 1.8; }
+.login-box .demo-accounts strong { color: #2d5a87; }
+.login-error { color: #e74c3c; font-size: 13px; margin-top: 12px; text-align: center; min-height: 18px; }
+
+/* ===== 主布局 ===== */
+.main-layout { display: none; min-height: 100vh; }
+.sidebar { width: 220px; background: #1e3a5f; color: #fff; position: fixed; top: 0; left: 0; bottom: 0; overflow-y: auto; }
+.sidebar .logo { padding: 20px; font-size: 16px; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.1); text-align: center; }
+.sidebar .logo small { display: block; font-size: 11px; font-weight: 400; opacity: 0.7; margin-top: 4px; }
+.sidebar nav { padding: 12px 0; }
+.sidebar .nav-item { padding: 12px 20px; cursor: pointer; font-size: 14px; transition: all 0.2s; border-left: 3px solid transparent; }
+.sidebar .nav-item:hover { background: rgba(255,255,255,0.08); }
+.sidebar .nav-item.active { background: rgba(255,255,255,0.12); border-left-color: #4a9eff; }
+.sidebar .nav-item .icon { margin-right: 10px; }
+
+.main-content { margin-left: 220px; flex: 1; }
+.topbar { background: #fff; padding: 0 24px; height: 56px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); position: sticky; top: 0; z-index: 100; }
+.topbar .page-title { font-size: 16px; font-weight: 600; color: #1e3a5f; }
+.topbar .user-info { display: flex; align-items: center; gap: 12px; font-size: 13px; color: #555; }
+.topbar .user-info .badge { background: #e8f0fe; color: #2d5a87; padding: 3px 10px; border-radius: 12px; font-size: 12px; }
+.topbar .logout-btn { color: #e74c3c; cursor: pointer; font-size: 13px; }
+.topbar .logout-btn:hover { text-decoration: underline; }
+
+.page-content { padding: 24px; }
+
+/* ===== 通用组件 ===== */
+.card { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.card-title { font-size: 15px; font-weight: 600; color: #1e3a5f; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #eee; }
+.btn { padding: 8px 18px; border: none; border-radius: 5px; font-size: 13px; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+.btn-primary { background: #2d5a87; color: #fff; }
+.btn-primary:hover { background: #1e3a5f; }
+.btn-success { background: #27ae60; color: #fff; }
+.btn-success:hover { background: #1e8449; }
+.btn-warning { background: #f39c12; color: #fff; }
+.btn-warning:hover { background: #d68910; }
+.btn-danger { background: #e74c3c; color: #fff; }
+.btn-danger:hover { background: #c0392b; }
+.btn-default { background: #ecf0f1; color: #555; }
+.btn-default:hover { background: #d5dbdb; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.status-tag { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+.status-pending { background: #fef3e2; color: #d68910; }
+.status-extracted { background: #e8f4fd; color: #2d5a87; }
+.status-reviewing { background: #fde8e8; color: #c0392b; }
+.status-confirmed { background: #e8f8f0; color: #1e8449; }
+.status-archived { background: #eceff1; color: #7f8c8d; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #f8f9fa; padding: 10px 12px; text-align: left; font-weight: 600; color: #555; border-bottom: 2px solid #e9ecef; }
+td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
+tr:hover { background: #f8f9fa; }
+
+/* ===== 仪表盘 ===== */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
+.stat-card { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.stat-card .label { font-size: 13px; color: #888; margin-bottom: 8px; }
+.stat-card .value { font-size: 28px; font-weight: 700; color: #1e3a5f; }
+.stat-card .sub { font-size: 12px; color: #aaa; margin-top: 4px; }
+.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+.chart-box { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.chart-box .chart-title { font-size: 14px; font-weight: 600; color: #1e3a5f; margin-bottom: 12px; }
+.chart-container { width: 100%; height: 300px; }
+
+/* ===== 上传页 ===== */
+.upload-area { border: 2px dashed #ccc; border-radius: 8px; padding: 40px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 20px; }
+.upload-area:hover, .upload-area.dragover { border-color: #2d5a87; background: #f0f7ff; }
+.upload-area .icon { font-size: 48px; color: #ccc; margin-bottom: 12px; }
+.upload-area .text { font-size: 15px; color: #555; }
+.upload-area .hint { font-size: 12px; color: #aaa; margin-top: 8px; }
+.text-extract-area { margin-top: 20px; }
+.text-extract-area textarea { width: 100%; min-height: 150px; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; font-family: inherit; resize: vertical; outline: none; }
+.text-extract-area textarea:focus { border-color: #2d5a87; }
+.extract-result { margin-top: 20px; }
+.field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.field-item { background: #f8f9fa; border-radius: 6px; padding: 12px; border-left: 3px solid #2d5a87; }
+.field-item .field-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+.field-item .field-value { font-size: 14px; color: #1a1a1a; font-weight: 500; word-break: break-all; }
+.field-item .field-meta { font-size: 11px; color: #aaa; margin-top: 4px; }
+.field-item.source-llm { border-left-color: #2d5a87; }
+.field-item.source-rule { border-left-color: #27ae60; }
+.field-item.source-manual { border-left-color: #f39c12; }
+.field-item.source-none { border-left-color: #ccc; opacity: 0.6; }
+.icd-result { margin-top: 16px; padding: 14px; border-radius: 6px; }
+.icd-valid { background: #e8f8f0; border: 1px solid #a9dfbf; }
+.icd-invalid { background: #fde8e8; border: 1px solid #f5b7b1; }
+.icd-result .icd-code { font-size: 18px; font-weight: 700; }
+.icd-result .icd-name { font-size: 14px; color: #555; margin-top: 4px; }
+.icd-result .icd-suggestion { font-size: 12px; color: #888; margin-top: 8px; }
+
+/* ===== 记录列表 ===== */
+.filter-bar { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.filter-bar select, .filter-bar input { padding: 7px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; outline: none; }
+.filter-bar select:focus, .filter-bar input:focus { border-color: #2d5a87; }
+.pagination { display: flex; justify-content: center; gap: 8px; margin-top: 20px; }
+.pagination button { padding: 6px 12px; border: 1px solid #ddd; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.pagination button.active { background: #2d5a87; color: #fff; border-color: #2d5a87; }
+.pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ===== 复核页 ===== */
+.review-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+.review-header .doc-info h2 { font-size: 18px; color: #1e3a5f; margin-bottom: 8px; }
+.review-header .doc-info .meta { font-size: 13px; color: #888; line-height: 1.8; }
+.review-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.field-edit { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.field-edit input { flex: 1; padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+.field-edit .save-btn { padding: 5px 10px; font-size: 12px; }
+.original-text { background: #f8f9fa; padding: 14px; border-radius: 6px; font-size: 12px; color: #555; line-height: 1.8; max-height: 300px; overflow-y: auto; white-space: pre-wrap; }
+.audit-timeline { margin-top: 16px; }
+.audit-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+.audit-item .dot { width: 10px; height: 10px; border-radius: 50%; background: #2d5a87; margin-top: 5px; flex-shrink: 0; }
+.audit-item .content { flex: 1; }
+.audit-item .action { font-size: 13px; color: #1a1a1a; font-weight: 500; }
+.audit-item .time { font-size: 11px; color: #aaa; margin-top: 2px; }
+.audit-item .detail { font-size: 12px; color: #666; margin-top: 4px; }
+
+/* ===== 批量结果 ===== */
+.batch-result { margin-top: 20px; }
+.batch-summary { display: flex; gap: 20px; margin-bottom: 16px; font-size: 14px; }
+.batch-summary .success { color: #27ae60; font-weight: 600; }
+.batch-summary .failed { color: #e74c3c; font-weight: 600; }
+
+/* ===== 加载 & 提示 ===== */
+.loading { text-align: center; padding: 40px; color: #888; }
+.loading .spinner { display: inline-block; width: 30px; height: 30px; border: 3px solid #f3f3f3; border-top: 3px solid #2d5a87; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 12px; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 14px; z-index: 9999; animation: slideIn 0.3s; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.toast-success { background: #27ae60; }
+.toast-error { background: #e74c3c; }
+.toast-info { background: #2d5a87; }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+.empty-state { text-align: center; padding: 60px 20px; color: #aaa; }
+.empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<!-- ===== 登录页 ===== -->
+<div class="login-page" id="loginPage">
+  <div class="login-box">
+    <h1>医疗病案智能编码系统</h1>
+    <div class="subtitle">Medical Record Intelligent Coding System</div>
+    <label>用户名</label>
+    <input type="text" id="loginUsername" placeholder="请输入用户名" value="binganke">
+    <label>密码</label>
+    <input type="password" id="loginPassword" placeholder="请输入密码" value="bingan123">
+    <button onclick="doLogin()">登 录</button>
+    <div class="login-error" id="loginError"></div>
+    <div class="demo-accounts">
+      <strong>演示账号：</strong><br>
+      病案科（编码员）：binganke / bingan123<br>
+      医务部（管理员）：yiwubu / yiwu123<br>
+      医保办（查看员）：yibaoban / yibao123
+    </div>
+  </div>
+</div>
+
+<!-- ===== 主布局 ===== -->
+<div class="main-layout" id="mainLayout">
+  <!-- 侧边栏 -->
+  <div class="sidebar">
+    <div class="logo">病案智能编码<small>Medical Coding System</small></div>
+    <nav>
+      <div class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')"><span class="icon">📊</span>统计仪表盘</div>
+      <div class="nav-item" data-page="upload" onclick="switchPage('upload')"><span class="icon">📤</span>病案上传抽取</div>
+      <div class="nav-item" data-page="records" onclick="switchPage('records')"><span class="icon">📋</span>病案记录管理</div>
+      <div class="nav-item" data-page="audit" onclick="switchPage('audit')"><span class="icon">📝</span>操作审计日志</div>
+    </nav>
+  </div>
+
+  <!-- 主内容区 -->
+  <div class="main-content">
+    <div class="topbar">
+      <div class="page-title" id="pageTitle">统计仪表盘</div>
+      <div class="user-info">
+        <span id="userDept" class="badge">病案科</span>
+        <span id="userName">编码员</span>
+        <span class="logout-btn" onclick="doLogout()">退出</span>
+      </div>
+    </div>
+    <div class="page-content" id="pageContent"></div>
+  </div>
+</div>
+
+<script>
+// ===== 全局状态 =====
+let token = localStorage.getItem('mcs_token') || '';
+let currentUser = JSON.parse(localStorage.getItem('mcs_user') || '{}');
+let currentPage = 'dashboard';
+let recordsOffset = 0;
+let recordsStatus = '';
+let auditOffset = 0;
+const PAGE_SIZE = 10;
+
+const STATUS_MAP = {
+  pending: { label: '待抽取', class: 'status-pending' },
+  extracted: { label: '已抽取', class: 'status-extracted' },
+  reviewing: { label: '复核中', class: 'status-reviewing' },
+  confirmed: { label: '已确认', class: 'status-confirmed' },
+  archived: { label: '已归档', class: 'status-archived' },
+};
+
+// ===== API 封装 =====
+async function api(url, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401) { doLogout(); throw new Error('登录已过期'); }
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || '请求失败');
+  return data;
+}
+
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ===== 登录 =====
+async function doLogin() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if (!username || !password) { document.getElementById('loginError').textContent = '请输入用户名和密码'; return; }
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '登录失败');
+    token = data.token;
+    currentUser = { username: data.username, department: data.department, role: data.role };
+    localStorage.setItem('mcs_token', token);
+    localStorage.setItem('mcs_user', JSON.stringify(currentUser));
+    showMain();
+    toast('登录成功', 'success');
+  } catch (e) {
+    document.getElementById('loginError').textContent = e.message;
+  }
+}
+
+function doLogout() {
+  token = ''; currentUser = {};
+  localStorage.removeItem('mcs_token');
+  localStorage.removeItem('mcs_user');
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('mainLayout').style.display = 'none';
+}
+
+function showMain() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('mainLayout').style.display = 'block';
+  document.getElementById('userName').textContent = currentUser.username;
+  document.getElementById('userDept').textContent = currentUser.department;
+  switchPage('dashboard');
+}
+
+// ===== 页面切换 =====
+function switchPage(page) {
+  currentPage = page;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
+  const titles = { dashboard: '统计仪表盘', upload: '病案上传抽取', records: '病案记录管理', audit: '操作审计日志' };
+  document.getElementById('pageTitle').textContent = titles[page] || '';
+  if (page === 'dashboard') renderDashboard();
+  else if (page === 'upload') renderUpload();
+  else if (page === 'records') { recordsOffset = 0; renderRecords(); }
+  else if (page === 'audit') { auditOffset = 0; renderAudit(); }
+}
+
+// ===== 仪表盘 =====
+async function renderDashboard() {
+  const el = document.getElementById('pageContent');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>加载中...</div>';
+  try {
+    const stats = await api('/api/stats/overview');
+    const sc = stats.status_counts || {};
+    el.innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card"><div class="label">病案总数</div><div class="value">${stats.total}</div><div class="sub">全部记录</div></div>
+        <div class="stat-card"><div class="label">待复核</div><div class="value" style="color:#d68910">${(sc.extracted||0)+(sc.reviewing||0)}</div><div class="sub">已抽取+复核中</div></div>
+        <div class="stat-card"><div class="label">已确认</div><div class="value" style="color:#1e8449">${sc.confirmed||0}</div><div class="sub">确认归档</div></div>
+        <div class="stat-card"><div class="label">平均置信度</div><div class="value">${(stats.avg_confidence*100).toFixed(0)}%</div><div class="sub">抽取置信度均值</div></div>
+      </div>
+      <div class="charts-row">
+        <div class="chart-box"><div class="chart-title">状态分布</div><div id="chartStatus" class="chart-container"></div></div>
+        <div class="chart-box"><div class="chart-title">近7日抽取趋势</div><div id="chartTrend" class="chart-container"></div></div>
+      </div>
+      <div class="chart-box"><div class="chart-title">ICD 疾病分布 TOP 10</div><div id="chartIcd" class="chart-container" style="height:350px"></div></div>
+    `;
+    // 状态分布饼图
+    const statusChart = echarts.init(document.getElementById('chartStatus'));
+    statusChart.setOption({
+      tooltip: { trigger: 'item' },
+      legend: { bottom: 0 },
+      series: [{
+        type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'],
+        data: [
+          { value: sc.pending||0, name: '待抽取', itemStyle:{color:'#f39c12'} },
+          { value: sc.extracted||0, name: '已抽取', itemStyle:{color:'#2d5a87'} },
+          { value: sc.reviewing||0, name: '复核中', itemStyle:{color:'#e74c3c'} },
+          { value: sc.confirmed||0, name: '已确认', itemStyle:{color:'#27ae60'} },
+          { value: sc.archived||0, name: '已归档', itemStyle:{color:'#95a5a6'} },
+        ],
+        label: { formatter: '{b}: {c} ({d}%)' },
+      }],
+    });
+    // 趋势图
+    const trendChart = echarts.init(document.getElementById('chartTrend'));
+    const trend = stats.daily_trend || [];
+    trendChart.setOption({
+      tooltip: { trigger: 'axis' },
+      grid: { left: 40, right: 20, top: 20, bottom: 30 },
+      xAxis: { type: 'category', data: trend.map(t => t.date.slice(5)), axisLabel:{fontSize:11} },
+      yAxis: { type: 'value', minInterval: 1 },
+      series: [{ type: 'line', data: trend.map(t => t.count), smooth: true,
+        areaStyle: { color: 'rgba(45,90,135,0.15)' }, itemStyle:{color:'#2d5a87'} }],
+    });
+    // ICD分布
+    const icdChart = echarts.init(document.getElementById('chartIcd'));
+    const icdData = (stats.icd_distribution || []).slice(0, 10);
+    icdChart.setOption({
+      tooltip: { trigger: 'axis' },
+      grid: { left: 180, right: 30, top: 10, bottom: 30 },
+      xAxis: { type: 'value', minInterval: 1 },
+      yAxis: { type: 'category', data: icdData.map(d => d.label).reverse(), axisLabel:{fontSize:11,width:170,overflow:'truncate'} },
+      series: [{ type: 'bar', data: icdData.map(d => d.count).reverse(),
+        itemStyle: { color: '#2d5a87', borderRadius: [0,4,4,0] },
+        label: { show: true, position: 'right', fontSize: 11 } }],
+    });
+    window.addEventListener('resize', () => { statusChart.resize(); trendChart.resize(); icdChart.resize(); });
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div>加载失败：${e.message}</div>`;
+  }
+}
+
+// ===== 上传抽取页 =====
+function renderUpload() {
+  const el = document.getElementById('pageContent');
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">文件上传抽取（支持 PDF / Word / Excel / PPT / TXT / 图片）</div>
+      <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+        <div class="icon">📁</div>
+        <div class="text">点击或拖拽文件到此处上传</div>
+        <div class="hint">支持单文件或多文件批量上传（最多20个），自动解析+抽取+落库</div>
+      </div>
+      <input type="file" id="fileInput" multiple style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.png,.jpg,.jpeg" onchange="handleFileUpload(this.files)">
+      <div id="uploadResult"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">文本直接抽取</div>
+      <div class="text-extract-area">
+        <textarea id="textInput" placeholder="粘贴病案文本，点击抽取按钮..."></textarea>
+        <div style="margin-top:12px"><button class="btn btn-primary" onclick="handleTextExtract()">开始抽取</button></div>
+      </div>
+      <div id="textResult"></div>
+    </div>
+  `;
+  // 拖拽
+  const area = document.getElementById('uploadArea');
+  area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('dragover'); });
+  area.addEventListener('dragleave', () => area.classList.remove('dragover'));
+  area.addEventListener('drop', e => { e.preventDefault(); area.classList.remove('dragover'); handleFileUpload(e.dataTransfer.files); });
+}
+
+async function handleFileUpload(files) {
+  if (!files || files.length === 0) return;
+  const resultEl = document.getElementById('uploadResult');
+  resultEl.innerHTML = '<div class="loading"><div class="spinner"></div>正在处理 ' + files.length + ' 个文件...</div>';
+  try {
+    const formData = new FormData();
+    for (const f of files) formData.append('files', f);
+    const res = await fetch('/api/documents/batch', {
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '处理失败');
+    let html = `<div class="batch-result"><div class="batch-summary">
+      共 ${data.total} 个文件，<span class="success">成功 ${data.success}</span>，<span class="failed">失败 ${data.failed}</span>，耗时 ${data.elapsed_ms}ms
+    </div><table><thead><tr><th>文件名</th><th>状态</th><th>记录ID</th><th>字段数</th><th>置信度</th><th>错误信息</th></tr></thead><tbody>`;
+    for (const r of data.results) {
+      html += `<tr>
+        <td>${r.filename}</td>
+        <td>${r.success ? '<span class="status-tag status-confirmed">成功</span>' : '<span class="status-tag status-reviewing">失败</span>'}</td>
+        <td>${r.record_id || '-'}</td>
+        <td>${r.field_count || '-'}</td>
+        <td>${r.confidence ? (r.confidence*100).toFixed(0)+'%' : '-'}</td>
+        <td style="color:#e74c3c;font-size:12px">${r.error || ''}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+    resultEl.innerHTML = html;
+    toast(`处理完成：成功${data.success}，失败${data.failed}`, data.failed > 0 ? 'error' : 'success');
+  } catch (e) {
+    resultEl.innerHTML = `<div class="empty-state"><div class="icon">❌</div>处理失败：${e.message}</div>`;
+  }
+}
+
+async function handleTextExtract() {
+  const text = document.getElementById('textInput').value.trim();
+  if (!text) { toast('请输入病案文本', 'error'); return; }
+  const resultEl = document.getElementById('textResult');
+  resultEl.innerHTML = '<div class="loading"><div class="spinner"></div>抽取中...</div>';
+  try {
+    const data = await api('/api/documents/extract', { method: 'POST', body: JSON.stringify({ text }) });
+    resultEl.innerHTML = renderExtractResult(data);
+    toast('抽取完成', 'success');
+  } catch (e) {
+    resultEl.innerHTML = `<div class="empty-state"><div class="icon">❌</div>抽取失败：${e.message}</div>`;
+  }
+}
+
+function renderExtractResult(data) {
+  const fields = data.fields || [];
+  let fieldsHtml = '<div class="field-grid">';
+  for (const f of fields) {
+    const srcClass = f.value ? 'source-' + f.source : 'source-none';
+    const srcLabel = { llm: 'LLM抽取', rule: '规则抽取', manual: '人工修正', none: '未抽取' }[f.source] || f.source;
+    fieldsHtml += `<div class="field-item ${srcClass}">
+      <div class="field-label">${f.label}（${f.key}）</div>
+      <div class="field-value">${f.value || '<span style="color:#ccc">未抽取</span>'}</div>
+      <div class="field-meta">${srcLabel} · 置信度 ${(f.confidence*100).toFixed(0)}%</div>
+    </div>`;
+  }
+  fieldsHtml += '</div>';
+  const icd = data.icd_check || {};
+  const icdClass = icd.matched ? 'icd-valid' : 'icd-invalid';
+  const icdHtml = `<div class="icd-result ${icdClass}">
+    <div class="icd-code">ICD: ${icd.code || '无'} ${icd.matched ? '✅' : '⚠️'}</div>
+    <div class="icd-name">${icd.name || '未匹配到疾病名称'}</div>
+    <div class="icd-suggestion">${icd.suggestion || ''}</div>
+  </div>`;
+  return `<div class="extract-result">
+    <div style="margin-bottom:12px;font-size:13px;color:#666">
+      抽取模式：<strong>${data.mode}</strong> · 抽取字段：<strong>${data.field_count}/15</strong> · 平均置信度：<strong>${(data.confidence_avg*100).toFixed(0)}%</strong> · 缺失字段：${(data.missing||[]).join(', ') || '无'}
+    </div>
+    ${fieldsHtml}
+    ${icdHtml}
+  </div>`;
+}
+
+// ===== 记录列表 =====
+async function renderRecords() {
+  const el = document.getElementById('pageContent');
+  el.innerHTML = `
+    <div class="card">
+      <div class="filter-bar">
+        <select id="statusFilter" onchange="filterRecords()">
+          <option value="">全部状态</option>
+          <option value="pending">待抽取</option>
+          <option value="extracted">已抽取</option>
+          <option value="reviewing">复核中</option>
+          <option value="confirmed">已确认</option>
+          <option value="archived">已归档</option>
+        </select>
+        <span style="color:#888;font-size:13px" id="recordsTotal"></span>
+      </div>
+      <div id="recordsTable"><div class="loading"><div class="spinner"></div>加载中...</div></div>
+      <div class="pagination" id="recordsPagination"></div>
+    </div>
+  `;
+  await loadRecords();
+}
+
+function filterRecords() {
+  recordsStatus = document.getElementById('statusFilter').value;
+  recordsOffset = 0;
+  loadRecords();
+}
+
+async function loadRecords() {
+  const tableEl = document.getElementById('recordsTable');
+  try {
+    const params = new URLSearchParams({ limit: PAGE_SIZE, offset: recordsOffset });
+    if (recordsStatus) params.set('status', recordsStatus);
+    const data = await api('/api/records?' + params.toString());
+    document.getElementById('recordsTotal').textContent = `共 ${data.total} 条记录`;
+    if (data.items.length === 0) {
+      tableEl.innerHTML = '<div class="empty-state"><div class="icon">📭</div>暂无记录</div>';
+      return;
+    }
+    let html = '<table><thead><tr><th>ID</th><th>文件名</th><th>科室</th><th>状态</th><th>模式</th><th>置信度</th><th>复核人</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
+    for (const r of data.items) {
+      const st = STATUS_MAP[r.status] || { label: r.status, class: '' };
+      html += `<tr>
+        <td>${r.id}</td>
+        <td>${r.doc_name}</td>
+        <td>${r.department}</td>
+        <td><span class="status-tag ${st.class}">${st.label}</span></td>
+        <td>${r.mode}</td>
+        <td>${(r.confidence*100).toFixed(0)}%</td>
+        <td>${r.reviewer || '-'}</td>
+        <td style="font-size:12px">${r.created_at}</td>
+        <td><button class="btn btn-primary" style="padding:4px 12px;font-size:12px" onclick="viewRecord(${r.id})">查看/复核</button></td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    tableEl.innerHTML = html;
+    // 分页
+    const totalPages = Math.ceil(data.total / PAGE_SIZE);
+    const currentPage = Math.floor(recordsOffset / PAGE_SIZE) + 1;
+    let pagHtml = `<button ${currentPage<=1?'disabled':''} onclick="goRecordsPage(${currentPage-1})">上一页</button>`;
+    for (let i = 1; i <= Math.min(totalPages, 5); i++) {
+      pagHtml += `<button class="${i===currentPage?'active':''}" onclick="goRecordsPage(${i})">${i}</button>`;
+    }
+    pagHtml += `<button ${currentPage>=totalPages?'disabled':''} onclick="goRecordsPage(${currentPage+1})">下一页</button>`;
+    document.getElementById('recordsPagination').innerHTML = pagHtml;
+  } catch (e) {
+    tableEl.innerHTML = `<div class="empty-state"><div class="icon">❌</div>加载失败：${e.message}</div>`;
+  }
+}
+
+function goRecordsPage(page) {
+  recordsOffset = (page - 1) * PAGE_SIZE;
+  loadRecords();
+}
+
+// ===== 记录详情/复核 =====
+async function viewRecord(id) {
+  const el = document.getElementById('pageContent');
+  document.getElementById('pageTitle').textContent = '病案详情与人工复核';
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>加载中...</div>';
+  try {
+    const r = await api('/api/records/' + id);
+    const st = STATUS_MAP[r.status] || { label: r.status, class: '' };
+    const fields = r.fields_json && r.fields_json.fields ? r.fields_json.fields : (Array.isArray(r.fields_json) ? r.fields_json : []);
+    const canReview = ['extracted', 'reviewing'].includes(r.status);
+    const canConfirm = ['extracted', 'reviewing'].includes(r.status);
+    const canArchive = r.status === 'confirmed';
+
+    let fieldsHtml = '<div class="field-grid">';
+    for (const f of fields) {
+      const srcClass = f.value ? 'source-' + (f.source || 'llm') : 'source-none';
+      const srcLabel = { llm: 'LLM抽取', rule: '规则抽取', manual: '人工修正', none: '未抽取' }[f.source] || f.source || '未知';
+      fieldsHtml += `<div class="field-item ${srcClass}" id="field-${f.key}">
+        <div class="field-label">${f.label}（${f.key}）</div>
+        <div class="field-value" id="field-value-${f.key}">${f.value || '<span style="color:#ccc">未抽取</span>'}</div>
+        <div class="field-meta">${srcLabel} · 置信度 ${((f.confidence||0)*100).toFixed(0)}%</div>
+        ${canReview ? `<div class="field-edit">
+          <input type="text" id="edit-${f.key}" value="${f.value || ''}" placeholder="修改值">
+          <button class="btn btn-warning save-btn" onclick="saveField('${f.key}','${f.label}')">保存</button>
+        </div>` : ''}
+      </div>`;
+    }
+    fieldsHtml += '</div>';
+
+    const icd = r.icd_json || {};
+    const icdClass = icd.matched ? 'icd-valid' : 'icd-invalid';
+    const icdHtml = `<div class="icd-result ${icdClass}" style="margin-top:16px">
+      <div class="icd-code">ICD: ${icd.code || '无'} ${icd.matched ? '✅' : '⚠️'}</div>
+      <div class="icd-name">${icd.name || '未匹配到疾病名称'}</div>
+      <div class="icd-suggestion">${icd.suggestion || ''}</div>
+    </div>`;
+
+    el.innerHTML = `
+      <div class="card">
+        <div class="review-header">
+          <div class="doc-info">
+            <h2>${r.doc_name} <span class="status-tag ${st.class}" style="margin-left:8px">${st.label}</span></h2>
+            <div class="meta">
+              记录ID：${r.id} · 科室：${r.department} · 抽取模式：${r.mode} · 置信度：${(r.confidence*100).toFixed(0)}%<br>
+              创建时间：${r.created_at} · 复核人：${r.reviewer || '未复核'} · 确认人：${r.confirmed_by || '未确认'}
+            </div>
+          </div>
+          <div class="review-actions">
+            <button class="btn btn-default" onclick="switchPage('records')">返回列表</button>
+            ${canReview ? `<button class="btn btn-warning" onclick="reviewAction(${r.id},'submit_review')">提交复核</button>` : ''}
+            ${canConfirm ? `<button class="btn btn-success" onclick="reviewAction(${r.id},'confirm')">确认归档</button>` : ''}
+            ${r.status === 'reviewing' ? `<button class="btn btn-danger" onclick="reviewAction(${r.id},'reject')">驳回重抽</button>` : ''}
+            ${canArchive ? `<button class="btn btn-primary" onclick="reviewAction(${r.id},'archive')">归档</button>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">抽取字段（${canReview ? '可修改' : '只读'}）</div>
+        ${fieldsHtml}
+        ${icdHtml}
+      </div>
+      <div class="card">
+        <div class="card-title">原始病案文本</div>
+        <div class="original-text">${r.original_text || '（无原始文本）'}</div>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">❌</div>加载失败：${e.message}</div>`;
+  }
+}
+
+let modifiedFields = [];
+async function saveField(key, label) {
+  const val = document.getElementById('edit-' + key).value.trim();
+  if (!modifiedFields.find(f => f.key === key)) modifiedFields.push({ key, value: val });
+  else modifiedFields.find(f => f.key === key).value = val;
+  document.getElementById('field-value-' + key).textContent = val || '（已修改，待提交）';
+  document.getElementById('field-value-' + key).style.color = '#f39c12';
+  toast(`字段「${label}」已修改，点击操作按钮提交`, 'info');
+}
+
+async function reviewAction(id, action) {
+  const actionLabels = { submit_review: '提交复核', confirm: '确认归档', reject: '驳回重抽', archive: '归档' };
+  if (!confirm(`确定要执行「${actionLabels[action]}」操作吗？`)) return;
+  try {
+    const body = { action, fields: modifiedFields.length > 0 ? modifiedFields : undefined };
+    await api('/api/records/' + id + '/review', { method: 'POST', body: JSON.stringify(body) });
+    modifiedFields = [];
+    toast('操作成功', 'success');
+    viewRecord(id);
+  } catch (e) {
+    toast('操作失败：' + e.message, 'error');
+  }
+}
+
+// ===== 审计日志 =====
+async function renderAudit() {
+  const el = document.getElementById('pageContent');
+  el.innerHTML = `
+    <div class="card">
+      <div class="filter-bar">
+        <select id="auditAction" onchange="filterAudit()">
+          <option value="">全部操作</option>
+          <option value="login">登录</option>
+          <option value="create_record">创建记录</option>
+          <option value="review_submit_review">提交复核</option>
+          <option value="review_confirm">确认归档</option>
+          <option value="review_reject">驳回重抽</option>
+          <option value="review_archive">归档</option>
+          <option value="batch_process">批量处理</option>
+        </select>
+        <span style="color:#888;font-size:13px" id="auditTotal"></span>
+      </div>
+      <div id="auditTable"><div class="loading"><div class="spinner"></div>加载中...</div></div>
+      <div class="pagination" id="auditPagination"></div>
+    </div>
+  `;
+  await loadAudit();
+}
+
+function filterAudit() {
+  auditOffset = 0;
+  loadAudit();
+}
+
+async function loadAudit() {
+  const tableEl = document.getElementById('auditTable');
+  try {
+    const action = document.getElementById('auditAction').value;
+    const params = new URLSearchParams({ limit: PAGE_SIZE, offset: auditOffset });
+    if (action) params.set('action', action);
+    const data = await api('/api/audit-logs?' + params.toString());
+    document.getElementById('auditTotal').textContent = `共 ${data.total} 条日志`;
+    if (data.items.length === 0) {
+      tableEl.innerHTML = '<div class="empty-state"><div class="icon">📭</div>暂无日志</div>';
+      return;
+    }
+    const actionLabels = {
+      login: '🔐 登录', create_record: '📄 创建记录',
+      review_submit_review: '📝 提交复核', review_confirm: '✅ 确认归档',
+      review_reject: '❌ 驳回重抽', review_archive: '📦 归档',
+      batch_process: '📦 批量处理',
+    };
+    let html = '<div class="audit-timeline">';
+    for (const log of data.items) {
+      const detail = log.detail || {};
+      let detailStr = '';
+      if (detail.changed_fields) detailStr = '修改字段：' + detail.changed_fields.map(f => f.key).join(', ');
+      else if (detail.doc_name) detailStr = '文件：' + detail.doc_name;
+      else if (detail.total !== undefined) detailStr = `共${detail.total}个，成功${detail.success}，失败${detail.failed}`;
+      html += `<div class="audit-item">
+        <div class="dot"></div>
+        <div class="content">
+          <div class="action">${actionLabels[log.action] || log.action} · ${log.username}（${log.department}）</div>
+          <div class="time">${log.created_at} · IP: ${log.ip_address || '-'}</div>
+          ${detailStr ? `<div class="detail">${detailStr}</div>` : ''}
+        </div>
+      </div>`;
+    }
+    html += '</div>';
+    tableEl.innerHTML = html;
+    // 分页
+    const totalPages = Math.ceil(data.total / PAGE_SIZE);
+    const currentPage = Math.floor(auditOffset / PAGE_SIZE) + 1;
+    let pagHtml = `<button ${currentPage<=1?'disabled':''} onclick="goAuditPage(${currentPage-1})">上一页</button>`;
+    for (let i = 1; i <= Math.min(totalPages, 5); i++) {
+      pagHtml += `<button class="${i===currentPage?'active':''}" onclick="goAuditPage(${i})">${i}</button>`;
+    }
+    pagHtml += `<button ${currentPage>=totalPages?'disabled':''} onclick="goAuditPage(${currentPage+1})">下一页</button>`;
+    document.getElementById('auditPagination').innerHTML = pagHtml;
+  } catch (e) {
+    tableEl.innerHTML = `<div class="empty-state"><div class="icon">❌</div>加载失败：${e.message}</div>`;
+  }
+}
+
+function goAuditPage(page) {
+  auditOffset = (page - 1) * PAGE_SIZE;
+  loadAudit();
+}
+
+// ===== 初始化 =====
+if (token && currentUser.username) {
+  showMain();
+}
+</script>
+</body>
+</html>
