@@ -1,86 +1,137 @@
-# 医疗病案智能编码系统
+<div align="center">
 
-> Medical Record Intelligent Coding System — 基于 LLM + 规则双引擎的医疗病案结构化抽取与全流程编码管理平台
+# 🏥 医疗病案智能编码系统
 
-面向医院病案科、医务部、医保办的全流程病案智能编码平台，覆盖「多格式文档解析 → 双引擎智能抽取 → ICD-10 三层校验 → 人工复核 → 确认归档 → 统计审计」完整业务闭环。
+**Medical Record Intelligent Coding System**
 
----
+基于 LLM + 规则双引擎的医疗病案结构化抽取与全流程编码管理平台
 
-## 核心技术亮点
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![LLM](https://img.shields.io/badge/LLM-DeepSeek-4A90D9)](https://www.deepseek.com/)
 
-### 1. LLM + 规则双引擎融合抽取
-- **LLM 引擎**：基于 DeepSeek Chat 的语义理解抽取，灵活适应不同医院、不同格式的病案文本
-- **规则引擎**：正则 + 关键词匹配，稳定快速零成本，离线可用
-- **融合策略**：LLM 值非空优先，规则值补空缺，每个字段标注来源（llm/rule/manual）和置信度
-- **技术难点**：解决 LLM 不稳定、幻觉问题，同时保留规则引擎的确定性，融合后综合准确率 ~92.8%
-
-### 2. ICD-10 三层校验闭环
-- **格式校验**：正则匹配 ICD-10 标准格式（`^[A-Z]\d{2}(\.\d{1,2})?$`）
-- **字典匹配**：36 条高频编码字典（可扩展至完整 ICD-10 库 2万+ 编码）
-- **近邻纠错**：未命中时基于前缀相似度算法自动推荐最接近编码，辅助编码员快速修正
-- **技术难点**：ICD 编码是医保结算核心数据，错误编码会导致医保拒付，三层校验将编码错误率降至最低
-
-### 3. 工作流状态机 + 人工复核闭环
-- **5 状态闭环**：待抽取 → 已抽取 → 复核中 → 已确认 → 已归档（支持驳回重抽）
-- **状态流转严格校验**：非法流转自动拒绝，每个状态记录操作人、操作时间
-- **字段级人工修正**：每个字段可单独修改，标记为「人工修正」，置信度置为 1.0
-- **技术难点**：医疗编码需要人工复核确认，设计状态机确保流程规范、可追溯
-
-### 4. 全链路审计日志
-- **操作留痕**：登录、创建记录、提交复核、确认归档、驳回、归档、批量处理等所有关键操作
-- **记录维度**：操作人、科室、时间、IP、操作详情（修改了哪些字段、新旧值对比）
-- **权限隔离**：管理员可见全部日志，普通用户仅见自己的操作
-- **技术难点**：医疗数据合规要求操作可追溯，审计日志满足等保三级要求
-
-### 5. 科室级权限隔离
-- **3 种角色**：编码员（病案科，可抽取+复核）、管理员（医务部，全量权限）、查看员（医保办/临床科室，仅查看）
-- **数据隔离**：普通用户仅可见本科室记录，管理员可见全部
-- **JWT 认证**：基于 PyJWT 的 Token 认证，支持过期时间配置
+</div>
 
 ---
 
-## 系统架构
+## 📑 目录
+
+- [✨ 核心技术亮点](#-核心技术亮点)
+- [🏗️ 系统架构](#️-系统架构)
+- [🔧 核心模块详解](#-核心模块详解)
+- [📦 技术栈选型](#-技术栈选型)
+- [🗄️ 数据库设计](#️-数据库设计)
+- [🌐 API 接口设计](#-api-接口设计)
+- [📊 性能指标](#-性能指标)
+- [🚀 快速开始](#-快速开始)
+- [📁 项目结构](#-项目结构)
+- [🔮 后续演进方向](#-后续演进方向)
+- [📄 License](#-license)
+
+---
+
+## ✨ 核心技术亮点
+
+### 1️⃣ LLM + 规则双引擎融合抽取
+
+| 引擎 | 特点 | 性能 |
+|---|---|---|
+| 🤖 **LLM 引擎** | DeepSeek Chat 语义理解，灵活适应不同医院格式 | 3-10s/份 |
+| 📋 **规则引擎** | 正则+关键词，稳定快速零成本，离线可用 | <10ms/份 |
+| 🔀 **融合策略** | LLM 值非空优先，规则值补空缺，标注来源和置信度 | 综合准确率 ~92.8% |
+
+> **技术难点**：解决 LLM 不稳定、幻觉问题，同时保留规则引擎的确定性，融合后兼顾准确率与召回率。
+
+### 2️⃣ ICD-10 三层校验闭环
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  ① 格式校验  │───▶│  ② 字典匹配  │───▶│ ③ 近邻纠错   │
+│  正则匹配    │    │  36条高频编码 │    │  前缀相似度  │
+│  ICD-10标准  │    │  可扩展2万+  │    │  Top-1推荐   │
+└─────────────┘    └─────────────┘    └─────────────┘
+```
+
+> **技术难点**：ICD 编码是医保结算核心数据，错误编码会导致医保拒付，三层校验将编码错误率降至最低。
+
+### 3️⃣ 工作流状态机 + 人工复核闭环
+
+```
+待抽取 ──▶ 已抽取 ──▶ 复核中 ──▶ 已确认 ──▶ 已归档
+              ▲                   │
+              └──── 驳回重抽 ─────┘
+```
+
+- ✅ 5 状态闭环，状态流转严格校验，非法流转自动拒绝
+- ✅ 字段级人工修正，标记为「人工修正」，置信度置为 1.0
+- ✅ 每个状态记录操作人、操作时间，全程可追溯
+
+### 4️⃣ 全链路审计日志
+
+- 📝 操作留痕：登录、创建记录、提交复核、确认归档、驳回、归档、批量处理
+- 👤 记录维度：操作人、科室、时间、IP、操作详情（修改字段、新旧值对比）
+- 🔒 权限隔离：管理员可见全部日志，普通用户仅见自己的操作
+
+> **合规价值**：医疗数据合规要求操作可追溯，审计日志满足等保三级要求。
+
+### 5️⃣ 科室级权限隔离
+
+| 角色 | 科室 | 权限 |
+|---|---|---|
+| 👨‍⚕️ **编码员** | 病案科 | 可抽取 + 可复核本科记录 |
+| 👨‍💼 **管理员** | 医务部 | 全量可见 + 全部操作 |
+| 👁️ **查看员** | 医保办/临床科室 | 仅查看，不可修改 |
+
+- 🔐 JWT Token 认证，支持过期时间配置
+- 🚫 普通用户仅可见本科室记录，管理员可见全部
+
+---
+
+## 🏗️ 系统架构
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                           前端层 (Nginx)                              │
+│                        🖥️ 前端层 (Nginx)                              │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │
 │  │ 登录页    │ │ 统计仪表盘 │ │ 上传抽取  │ │ 记录管理  │ │ 审计日志  │ │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │
 └─────────────────────────────────┬───────────────────────────────────┘
                                   │ HTTP/JSON
 ┌─────────────────────────────────▼───────────────────────────────────┐
-│                        FastAPI 应用层 (Uvicorn)                       │
+│                     ⚡ FastAPI 应用层 (Uvicorn)                       │
 │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────────┐  │
-│  │ 认证鉴权    │ │ 文档处理    │ │ 记录管理    │ │ 统计与审计      │  │
+│  │ 🔐 认证鉴权  │ │ 📄 文档处理  │ │ 📋 记录管理  │ │ 📊 统计与审计   │  │
 │  │ JWT+权限    │ │ 解析/抽取   │ │ 工作流/复核 │ │ 仪表盘/日志    │  │
 │  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └───────┬────────┘  │
 └────────┼────────────────┼────────────────┼────────────────┼───────────┘
          │                │                │                │
 ┌────────▼────────────────▼────────────────▼────────────────▼───────────┐
-│                        核心业务层                                        │
+│                        🧠 核心业务层                                      │
 │  ┌─────────────────────┐  ┌─────────────────────┐  ┌───────────────┐ │
-│  │  抽取融合管道         │  │  ICD-10 校验器       │  │  工作流引擎    │ │
-│  │  LLM抽取 + 规则抽取   │  │  格式校验+字典匹配   │  │  状态流转校验  │ │
-│  │  + 逐字段融合         │  │  + 近邻纠错建议      │  │  + 操作记录    │ │
+│  │ 🔀 抽取融合管道       │  │ 🏥 ICD-10 校验器    │  │ 🔄 工作流引擎  │ │
+│  │ LLM抽取 + 规则抽取   │  │ 格式校验+字典匹配   │  │ 状态流转校验  │ │
+│  │ + 逐字段融合         │  │ + 近邻纠错建议      │  │ + 操作记录    │ │
 │  └──────────┬──────────┘  └─────────────────────┘  └───────────────┘ │
 └─────────────┼──────────────────────────────────────────────────────────┘
               │
 ┌─────────────▼──────────────────────────────────────────────────────────┐
-│                        数据与服务层                                      │
+│                      💾 数据与服务层                                      │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
-│  │  MySQL 8.0   │  │  SQLite      │  │  DeepSeek API │  │  OCR      │ │
-│  │  生产主库     │  │  开发/降级   │  │  LLM 抽取     │  │  PaddleOCR │ │
-│  │  记录+审计    │  │              │  │              │  │  (可选)    │ │
+│  │ 🐬 MySQL 8.0  │  │ 📄 SQLite    │  │ 🤖 DeepSeek  │  │ 🔍 OCR    │ │
+│  │ 生产主库       │  │ 开发/降级    │  │ LLM 抽取     │  │ PaddleOCR │ │
+│  │ 记录+审计      │  │              │  │              │  │ (可选)    │ │
 │  └──────────────┘  └──────────────┘  └──────────────┘  └───────────┘ │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 核心模块详解
+## 🔧 核心模块详解
 
-### 双引擎抽取管道 (`app/extractor/pipeline.py`)
+### 🔀 双引擎抽取管道 (`app/extractor/pipeline.py`)
 
 ```
 病案文本输入
@@ -88,7 +139,7 @@
     ├──────────────────────┐
     ▼                      ▼
 ┌──────────────┐   ┌──────────────┐
-│  LLM 抽取引擎  │   │  规则抽取引擎  │
+│ 🤖 LLM 抽取引擎 │   │ 📋 规则抽取引擎 │
 │  (3-10秒)     │   │  (<10ms)     │
 │  语义理解强    │   │  稳定可靠     │
 └──────┬───────┘   └──────┬───────┘
@@ -96,7 +147,7 @@
        └─────────┬─────────┘
                  ▼
 ┌──────────────────────────────────┐
-│  融合层（逐字段决策）              │
+│ 🔀 融合层（逐字段决策）            │
 │  1. LLM 值非空 → 用 LLM 值        │
 │  2. LLM 值为空 → 用规则值补位     │
 │  3. 都为空 → null                 │
@@ -104,16 +155,17 @@
 └──────────────┬───────────────────┘
                ▼
 ┌──────────────────────────────────┐
-│  ICD-10 三层校验                  │
+│ 🏥 ICD-10 三层校验                │
 └──────────────┬───────────────────┘
                ▼
 ┌──────────────────────────────────┐
-│  输出：15字段 + 来源 + 置信度      │
+│ 📤 输出：15字段 + 来源 + 置信度    │
 │       + ICD校验结果 + 抽取模式     │
 └──────────────────────────────────┘
 ```
 
-**融合策略代码核心逻辑：**
+**融合策略核心代码：**
+
 ```python
 def _merge(llm_fields, rule_fields):
     for key in FIELD_KEYS:
@@ -129,15 +181,17 @@ def _merge(llm_fields, rule_fields):
             merged[key] = FieldResult(key, label, "", 0.0, "none")
 ```
 
-### ICD-10 校验器 (`app/icd/icd_validator.py`)
+### 🏥 ICD-10 校验器 (`app/icd/icd_validator.py`)
 
 **三层校验流程：**
+
 1. **归一化**：去空格、转大写、全角转半角
 2. **格式校验**：正则 `^[A-Z]\d{2}(\.\d{1,2})?$`
 3. **字典匹配**：在 `icd_sample.json` 中查询编码是否存在
 4. **近邻纠错**：未命中时按前缀相似度排序，推荐 Top-1 最接近编码
 
 **校验结果示例：**
+
 ```json
 {
   "code": "I10",
@@ -149,18 +203,20 @@ def _merge(llm_fields, rule_fields):
 }
 ```
 
-### 工作流状态机 (`app/db.py` + `app/main.py`)
+### 🔄 工作流状态机 (`app/db.py` + `app/main.py`)
 
 **状态流转规则：**
+
 | 当前状态 | 允许流转到 | 操作 |
 |---|---|---|
-| 待抽取 (pending) | 已抽取 | 系统自动抽取 |
-| 已抽取 (extracted) | 复核中 / 已确认 | 编码员提交复核 / 直接确认 |
-| 复核中 (reviewing) | 已确认 / 已抽取 | 管理员确认 / 驳回重抽 |
-| 已确认 (confirmed) | 已归档 | 归档 |
-| 已归档 (archived) | — | 终态，不可修改 |
+| ⏳ 待抽取 (pending) | 已抽取 | 系统自动抽取 |
+| 📋 已抽取 (extracted) | 复核中 / 已确认 | 编码员提交复核 / 直接确认 |
+| 🔍 复核中 (reviewing) | 已确认 / 已抽取 | 管理员确认 / 驳回重抽 |
+| ✅ 已确认 (confirmed) | 已归档 | 归档 |
+| 📦 已归档 (archived) | — | 终态，不可修改 |
 
 **非法流转自动拒绝：**
+
 ```python
 allowed = STATUS_TRANSITIONS.get(current_status, [])
 if new_status not in allowed:
@@ -169,136 +225,152 @@ if new_status not in allowed:
 
 ---
 
-## 技术栈选型及原因
+## 📦 技术栈选型
 
-| 技术 | 选型 | 选型原因 |
+| 分类 | 技术选型 | 选型原因 |
 |---|---|---|
-| 后端框架 | **FastAPI** | 异步高性能、自动生成 OpenAPI 文档、Pydantic 类型校验、开发效率高 |
-| 数据模型 | **Pydantic v2** | 类型安全、请求/响应自动校验、序列化性能好 |
-| 大模型 | **DeepSeek Chat** | OpenAI 兼容接口、中文理解好、性价比高、支持 function calling |
-| 数据库 | **MySQL 8.0 + SQLite** | 生产用 MySQL（稳定、JSON 字段支持），开发/降级用 SQLite（零配置） |
-| 认证 | **PyJWT** | 轻量级 JWT 实现、无状态、易扩展 |
-| 文档解析 | **PyMuPDF + python-docx + openpyxl + python-pptx** | 覆盖主流办公格式、纯 Python 无系统依赖 |
-| OCR | **PaddleOCR（可选）** | 中文识别准确率高、开源免费、可开关 |
-| 前端 | **原生 HTML + CSS + JS + ECharts** | 零构建、易部署、单页应用、ECharts 图表能力强 |
-| 反向代理 | **Nginx** | 静态资源服务 + API 反向代理、负载均衡、生产级稳定 |
-| 部署 | **Docker + Docker Compose** | 环境一致性、一键部署、易扩展、容器隔离 |
-| 测试 | **pytest** | 生态成熟、插件丰富、 fixtures 机制好 |
+| 🚀 后端框架 | **FastAPI** | 异步高性能、自动生成 OpenAPI 文档、Pydantic 类型校验、开发效率高 |
+| 📊 数据模型 | **Pydantic v2** | 类型安全、请求/响应自动校验、序列化性能好 |
+| 🤖 大模型 | **DeepSeek Chat** | OpenAI 兼容接口、中文理解好、性价比高、支持 function calling |
+| 💾 数据库 | **MySQL 8.0 + SQLite** | 生产用 MySQL（稳定、JSON 字段支持），开发/降级用 SQLite（零配置） |
+| 🔐 认证 | **PyJWT** | 轻量级 JWT 实现、无状态、易扩展 |
+| 📄 文档解析 | **PyMuPDF + python-docx + openpyxl + python-pptx** | 覆盖主流办公格式、纯 Python 无系统依赖 |
+| 🔍 OCR | **PaddleOCR（可选）** | 中文识别准确率高、开源免费、可开关 |
+| 🎨 前端 | **原生 HTML + CSS + JS + ECharts** | 零构建、易部署、单页应用、ECharts 图表能力强 |
+| 🌐 反向代理 | **Nginx** | 静态资源服务 + API 反向代理、负载均衡、生产级稳定 |
+| 🐳 部署 | **Docker + Docker Compose** | 环境一致性、一键部署、易扩展、容器隔离 |
+| 🧪 测试 | **pytest** | 生态成熟、插件丰富、fixtures 机制好 |
 
-**为什么不用 LangChain / LangGraph？**
+<details>
+<summary><strong>❓ 为什么不用 LangChain / LangGraph？</strong></summary>
+
 - 本项目抽取逻辑相对固定，不需要复杂的 Agent 编排
 - 自研融合管道更轻量、可控、易调试，避免框架黑盒
 - 减少依赖，降低部署复杂度和版本兼容风险
 
-**为什么不用 React / Vue？**
+</details>
+
+<details>
+<summary><strong>❓ 为什么不用 React / Vue？</strong></summary>
+
 - 前端功能以展示和表单为主，不需要复杂状态管理
 - 原生 JS 零构建，直接部署，减少工程化复杂度
 - ECharts CDN 引入即可，满足可视化需求
 
+</details>
+
 ---
 
-## 数据库设计
+## 🗄️ 数据库设计
 
 ### extraction_records（抽取记录表）
+
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| id | BIGINT | 主键 |
-| doc_name | VARCHAR(255) | 文档名称 |
-| department | VARCHAR(64) | 科室归属 |
-| fields_json | JSON | 15 字段抽取结果（含来源和置信度） |
-| icd_json | JSON | ICD 校验结果 |
-| original_text | TEXT | 原始病案文本（复核时参考） |
-| mode | VARCHAR(32) | 抽取模式（llm+rule / rule） |
-| confidence | FLOAT | 平均置信度 |
-| status | VARCHAR(16) | 工作流状态 |
-| reviewer | VARCHAR(64) | 复核人 |
-| reviewed_at | DATETIME | 复核时间 |
-| confirmed_by | VARCHAR(64) | 确认人 |
-| confirmed_at | DATETIME | 确认时间 |
-| created_at | DATETIME | 创建时间 |
-| updated_at | DATETIME | 更新时间 |
+| `id` | BIGINT | 主键 |
+| `doc_name` | VARCHAR(255) | 文档名称 |
+| `department` | VARCHAR(64) | 科室归属 |
+| `fields_json` | JSON | 15 字段抽取结果（含来源和置信度） |
+| `icd_json` | JSON | ICD 校验结果 |
+| `original_text` | TEXT | 原始病案文本（复核时参考） |
+| `mode` | VARCHAR(32) | 抽取模式（llm+rule / rule） |
+| `confidence` | FLOAT | 平均置信度 |
+| `status` | VARCHAR(16) | 工作流状态 |
+| `reviewer` | VARCHAR(64) | 复核人 |
+| `reviewed_at` | DATETIME | 复核时间 |
+| `confirmed_by` | VARCHAR(64) | 确认人 |
+| `confirmed_at` | DATETIME | 确认时间 |
+| `created_at` | DATETIME | 创建时间 |
+| `updated_at` | DATETIME | 更新时间 |
 
 ### audit_logs（审计日志表）
+
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| id | BIGINT | 主键 |
-| username | VARCHAR(64) | 操作人 |
-| department | VARCHAR(64) | 操作人科室 |
-| action | VARCHAR(32) | 操作类型 |
-| target_type | VARCHAR(32) | 目标类型 |
-| target_id | VARCHAR(64) | 目标ID |
-| detail | JSON | 操作详情（修改字段、新旧值） |
-| ip_address | VARCHAR(64) | 操作IP |
-| created_at | DATETIME | 操作时间 |
+| `id` | BIGINT | 主键 |
+| `username` | VARCHAR(64) | 操作人 |
+| `department` | VARCHAR(64) | 操作人科室 |
+| `action` | VARCHAR(32) | 操作类型 |
+| `target_type` | VARCHAR(32) | 目标类型 |
+| `target_id` | VARCHAR(64) | 目标ID |
+| `detail` | JSON | 操作详情（修改字段、新旧值） |
+| `ip_address` | VARCHAR(64) | 操作IP |
+| `created_at` | DATETIME | 操作时间 |
 
 ---
 
-## API 接口设计
+## 🌐 API 接口设计
 
-### 认证接口
+### 🔐 认证接口
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/auth/login` | 登录获取 JWT Token |
-| GET | `/api/auth/me` | 获取当前用户信息 |
+| `POST` | `/api/auth/login` | 登录获取 JWT Token |
+| `GET` | `/api/auth/me` | 获取当前用户信息 |
 
-### 文档处理接口
+### 📄 文档处理接口
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/documents/parse` | 文档解析（上传文件，返回文本/表格/分片） |
-| POST | `/api/documents/extract` | 文本抽取（传入文本，返回15字段+ICD） |
-| POST | `/api/documents/process` | 一站式处理（解析+抽取+落库） |
-| POST | `/api/documents/batch` | 批量处理（多文件上传，最多20个） |
+| `POST` | `/api/documents/parse` | 文档解析（上传文件，返回文本/表格/分片） |
+| `POST` | `/api/documents/extract` | 文本抽取（传入文本，返回15字段+ICD） |
+| `POST` | `/api/documents/process` | 一站式处理（解析+抽取+落库） |
+| `POST` | `/api/documents/batch` | 批量处理（多文件上传，最多20个） |
 
-### 记录管理接口
+### 📋 记录管理接口
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/records` | 记录列表（状态筛选+分页，科室级可见性） |
-| GET | `/api/records/{id}` | 记录详情（含原始文本、复核信息） |
-| POST | `/api/records/{id}/review` | 人工复核（修改字段+状态流转） |
+| `GET` | `/api/records` | 记录列表（状态筛选+分页，科室级可见性） |
+| `GET` | `/api/records/{id}` | 记录详情（含原始文本、复核信息） |
+| `POST` | `/api/records/{id}/review` | 人工复核（修改字段+状态流转） |
 
-### 统计与审计接口
+### 📊 统计与审计接口
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/stats/overview` | 统计概览（总量/状态分布/ICD分布/趋势） |
-| GET | `/api/audit-logs` | 审计日志列表（操作类型筛选） |
+| `GET` | `/api/stats/overview` | 统计概览（总量/状态分布/ICD分布/趋势） |
+| `GET` | `/api/audit-logs` | 审计日志列表（操作类型筛选） |
 
-### 系统接口
+### ⚙️ 系统接口
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/healthz` | 健康检查 |
-| GET | `/docs` | Swagger UI 在线文档 |
-| GET | `/openapi.json` | OpenAPI 规范 |
+| `GET` | `/healthz` | 健康检查 |
+| `GET` | `/docs` | Swagger UI 在线文档 |
+| `GET` | `/openapi.json` | OpenAPI 规范 |
 
 ---
 
-## 性能指标
+## 📊 性能指标
 
 | 指标 | 数值 | 测试环境 |
 |---|---|---|
-| 单份病案抽取（LLM+规则+ICD） | 3-10s | 含 DeepSeek API 调用 |
-| 规则抽取单独 | <10ms | 纯正则，离线可用 |
-| ICD 校验 | <5ms | 字典查询+前缀相似度 |
-| 综合准确率 | ~92.8% | 12份样例评测 |
-| ICD 匹配率 | ~91.7% | 12份样例评测 |
-| 完全正确率（15字段全对） | ~75% | 12份样例评测 |
-| 测试通过率 | 100% | pytest 全部通过 |
-| 单容器内存占用 | ~500MB | Docker 容器 |
+| ⏱️ 单份病案抽取（LLM+规则+ICD） | 3-10s | 含 DeepSeek API 调用 |
+| ⚡ 规则抽取单独 | <10ms | 纯正则，离线可用 |
+| 🏥 ICD 校验 | <5ms | 字典查询+前缀相似度 |
+| 🎯 综合准确率 | ~92.8% | 12份样例评测 |
+| ✅ ICD 匹配率 | ~91.7% | 12份样例评测 |
+| 💯 完全正确率（15字段全对） | ~75% | 12份样例评测 |
+| 🧪 测试通过率 | 100% | pytest 全部通过 |
+| 💾 单容器内存占用 | ~500MB | Docker 容器 |
 
 ---
 
-## 快速开始
+## 🚀 快速开始
 
-### 环境要求
+### 📋 环境要求
+
 - Python 3.10+
 - MySQL 8.0（可选，不装自动降级 SQLite）
 - Docker（可选，推荐用于生产部署）
 
-### 本地开发
+### 💻 本地开发
 
 ```bash
 # 1. 克隆项目
 git clone <repo-url>
-cd medical-coding-system
+cd M9T-MedRecordAI
 
 # 2. 创建虚拟环境
 python -m venv .venv
@@ -321,21 +393,25 @@ python data/gen_samples.py
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 访问
-- 前端页面：http://localhost:8000
-- API 文档：http://localhost:8000/docs
-- 健康检查：http://localhost:8000/healthz
+### 🌐 访问
 
-### 演示账号
-> ⚠️ 以下为演示用默认账号，生产部署时务必修改或替换为院内统一认证（LDAP/SSO）
+| 页面 | 地址 |
+|---|---|
+| 🎨 前端页面 | http://localhost:8000 |
+| 📖 API 文档 | http://localhost:8000/docs |
+| 💚 健康检查 | http://localhost:8000/healthz |
+
+### 👤 演示账号
+
+> ⚠️ **注意**：以下为演示用默认账号，生产部署时务必修改或替换为院内统一认证（LDAP/SSO）
 
 | 角色 | 用户名 | 密码 | 权限 |
 |---|---|---|---|
-| 编码员 | binganke | bingan123 | 病案科，可抽取+复核 |
-| 管理员 | yiwubu | yiwu123 | 医务部，全量权限 |
-| 查看员 | yibaoban | yibao123 | 医保办，仅查看 |
+| 👨‍⚕️ 编码员 | `binganke` | `bingan123` | 病案科，可抽取+复核 |
+| 👨‍💼 管理员 | `yiwubu` | `yiwu123` | 医务部，全量权限 |
+| 👁️ 查看员 | `yibaoban` | `yibao123` | 医保办，仅查看 |
 
-### Docker 部署
+### 🐳 Docker 部署
 
 ```bash
 cd deploy
@@ -358,78 +434,80 @@ docker compose logs -f app
 
 ---
 
-## 项目结构
+## 📁 项目结构
 
 ```
-medical-coding-system/
-├── app/                          # 应用主目录
+M9T-MedRecordAI/
+├── app/                          # 🎯 应用主目录
 │   ├── main.py                   # FastAPI 主应用（16个 API 接口）
-│   ├── config.py                 # 配置中心（环境变量统一读取）
-│   ├── auth.py                   # JWT 认证 + 科室级权限隔离
-│   ├── db.py                     # 数据持久化（MySQL/SQLite双后端 + 审计日志 + 统计）
-│   ├── schemas.py                # Pydantic 数据模型（请求/响应校验）
-│   ├── llm_client.py             # LLM 客户端封装（DeepSeek 兼容）
-│   ├── chunker.py                # 语义分片（标题/段落感知）
-│   ├── extractor/                # 抽取引擎核心
+│   ├── config.py                 # ⚙️ 配置中心（环境变量统一读取）
+│   ├── auth.py                   # 🔐 JWT 认证 + 科室级权限隔离
+│   ├── db.py                     # 💾 数据持久化（MySQL/SQLite双后端 + 审计日志 + 统计）
+│   ├── schemas.py                # 📊 Pydantic 数据模型（请求/响应校验）
+│   ├── llm_client.py             # 🤖 LLM 客户端封装（DeepSeek 兼容）
+│   ├── chunker.py                # 📄 语义分片（标题/段落感知）
+│   ├── extractor/                # 🔀 抽取引擎核心
 │   │   ├── pipeline.py           # 融合管道（LLM+规则+ICD校验）
 │   │   ├── llm_extractor.py      # LLM 抽取引擎
 │   │   ├── rule_extractor.py     # 规则抽取引擎（正则+关键词）
 │   │   └── fields.py             # 15 类字段定义
-│   ├── icd/                      # ICD-10 校验模块
+│   ├── icd/                      # 🏥 ICD-10 校验模块
 │   │   ├── icd_validator.py      # 三层校验器（格式+字典+纠错）
 │   │   └── icd_sample.json       # 36 条高频编码字典
-│   ├── eval/                     # 评测体系
+│   ├── eval/                     # 📈 评测体系
 │   │   └── run_eval.py           # 逐字段比对 + 指标计算
-│   └── parser/                   # 文档解析器（7种格式）
+│   └── parser/                   # 📄 文档解析器（7种格式）
 │       ├── base.py               # 解析器基类 + 注册表
 │       ├── pdf_parser.py         # PDF 解析
 │       ├── docx_parser.py        # Word 解析
 │       ├── xlsx_parser.py        # Excel 解析
 │       ├── pptx_parser.py        # PPT 解析
 │       ├── text_parser.py        # TXT/Markdown 解析
-│       ├── image_parser.py       # 图片 OCR 解析
-│       └── html_parser.py        # HTML 解析
-├── data/                         # 数据目录
+│       └── image_parser.py       # 图片 OCR 解析
+├── data/                         # 📊 数据目录
 │   └── gen_samples.py            # 样例数据生成脚本
-├── deploy/                       # 部署相关
+├── deploy/                       # 🚀 部署相关
 │   ├── docker-compose.yml        # Docker Compose（App+MySQL+Nginx）
 │   ├── Dockerfile                # Docker 镜像构建
 │   ├── nginx.conf                # Nginx 反向代理配置
-│   └── html/                     # 前端页面
+│   └── html/                     # 🎨 前端页面
 │       └── index.html            # 单页应用（登录/仪表盘/上传/列表/复核/审计）
-├── scripts/                      # 运维脚本
+├── scripts/                      # 🔧 运维脚本
 │   ├── init_db.sql               # 数据库初始化
 │   └── run_pipeline.py           # 批量离线处理管道
-├── tests/                        # 测试目录
+├── tests/                        # 🧪 测试目录
 │   ├── test_extractor.py         # 抽取引擎测试
 │   ├── test_icd.py               # ICD 校验测试
 │   ├── test_api.py               # API 接口测试
 │   └── test_parsers.py           # 解析器测试
-├── docs/                         # 文档
+├── docs/                         # 📚 文档
 │   └── design.md                 # 设计文档
-├── requirements.txt              # Python 依赖
-├── .env.example                  # 环境变量示例
-├── .gitignore                    # Git 忽略文件
-└── README.md                     # 项目说明
+├── requirements.txt              # 📦 Python 依赖
+├── .env.example                  # ⚙️ 环境变量示例
+├── .gitignore                    # 🚫 Git 忽略文件
+└── README.md                     # 📖 项目说明
 ```
 
 ---
 
-## 后续演进方向
+## 🔮 后续演进方向
 
-### 短期（1-3个月）
+### 📅 短期（1-3个月）
+
 - [ ] 接入完整 ICD-10 编码库（2万+编码），替换演示用 36 条字典
 - [ ] ICD-10-CM 中国临床扩展版支持
 - [ ] 前端字段修改体验优化（批量编辑、撤销重做）
 - [ ] 抽取结果导出 Excel/PDF
 
-### 中期（3-6个月）
+### 📅 中期（3-6个月）
+
 - [ ] 本地大模型部署（Qwen / Llama，数据不出院，满足医疗数据合规）
 - [ ] DRG/DIP 自动分组（基于抽取结果计算 DRG 分组，辅助医保结算）
 - [ ] 医保智能审核（检测编码与费用不匹配、高编低编等异常）
 - [ ] 与 HIS/EMR 系统 API 集成（自动拉取病案，抽取后回写编码）
 
-### 长期（6-12个月）
+### 📅 长期（6-12个月）
+
 - [ ] 模型微调（用复核后的数据微调领域模型，持续提升准确率）
 - [ ] 等保三级合规（加密存储、数据脱敏、细粒度权限、完整审计）
 - [ ] 多医院 SaaS 化部署（租户隔离、按量计费）
@@ -437,12 +515,20 @@ medical-coding-system/
 
 ---
 
-## License
+## 📄 License
 
-MIT
+[MIT](LICENSE)
 
 ---
 
-## 技术交流
+## 💬 技术交流
 
-欢迎 Issue / PR 交流。项目涉及医疗数据合规，生产部署前请务必进行安全评估和等保合规改造。
+欢迎 Issue / PR 交流。
+
+> ⚠️ **合规提示**：项目涉及医疗数据合规，生产部署前请务必进行安全评估和等保合规改造。
+
+<div align="center">
+
+**如果这个项目对你有帮助，欢迎给个 ⭐ Star 支持！**
+
+</div>
