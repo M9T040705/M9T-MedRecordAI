@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import Optional
 
 FORMAT_RE = re.compile(r"^[A-Za-z]\d{2}(?:\.\d{1,2})?$")
 
@@ -17,6 +18,18 @@ def _load_dict() -> dict:
     path = Path(__file__).parent / "icd_sample.json"
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _query_db(code: str) -> Optional[dict]:
+    """优先从数据库 ICD 编码库查询。"""
+    try:
+        from ..admin_db import get_icd_by_code
+        item = get_icd_by_code(code)
+        if item:
+            return {"code": item["code"], "name": item["name"]}
+    except Exception:
+        pass
+    return None
 
 
 def validate_icd(code: str) -> dict:
@@ -28,6 +41,12 @@ def validate_icd(code: str) -> dict:
         return {"code": code, "valid_format": False, "in_dictionary": False,
                 "name": "", "suggestion": "格式非法：应为字母+2位数字+可选小数（如 I10、E11.9）",
                 "matched": False}
+    # 优先查询数据库 ICD 编码库
+    db_item = _query_db(code)
+    if db_item:
+        return {"code": code, "valid_format": True, "in_dictionary": True,
+                "name": db_item["name"], "suggestion": "编码有效（来自编码库）", "matched": True}
+    # 回退到内置示例字典
     icd_dict = _load_dict()
     if code in icd_dict:
         return {"code": code, "valid_format": True, "in_dictionary": True,
