@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .auth import USERS, authenticate, can_view, get_current_user, require_departments
@@ -43,12 +43,18 @@ from .schemas import (AuditLogItem, AuditLogListResponse, BatchItemResult,
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    from .admin_db import init_admin_db
+    init_admin_db()
     settings.outputs_dir.mkdir(exist_ok=True)
     yield
 
 
 app = FastAPI(title="医疗病案智能编码系统", version="2.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# 注册管理后台路由
+from .admin_api import router as admin_router
+app.include_router(admin_router)
 
 EXTRACT_ALLOWED = require_departments("病案科", "医务部", "医保办")
 ADMIN_ONLY = require_departments("医务部")
@@ -189,6 +195,8 @@ def extract_doc(req: ExtractRequest, user: dict = Depends(EXTRACT_ALLOWED)):
 # ============================================================
 @app.post("/api/documents/process", response_model=ProcessResponse)
 async def process_doc(file: UploadFile = File(...),
+                      template_id: Optional[int] = Form(None),
+                      template_name: Optional[str] = Form(None),
                       user: dict = Depends(EXTRACT_ALLOWED),
                       request: Request = None):
     t0 = time.time()
@@ -208,7 +216,8 @@ async def process_doc(file: UploadFile = File(...),
 
     chunks = chunk_document(doc)
     full_text = doc.text + "\n" + doc.table_text()
-    extract = extract_fields(full_text, prefer_llm=not settings.offline)
+    extract = extract_fields(full_text, prefer_llm=not settings.offline,
+                             template_id=template_id, template_name=template_name)
     confs = [f.confidence for f in extract.fields if f.value]
 
     record_id = save_record({
