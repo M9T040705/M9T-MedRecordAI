@@ -30,6 +30,7 @@
 - [🌐 API 接口设计](#-api-接口设计)
 - [📊 性能指标](#-性能指标)
 - [🚀 快速开始](#-快速开始)
+- [⚙️ 管理后台](#️-管理后台)
 - [📁 项目结构](#-项目结构)
 - [🔮 后续演进方向](#-后续演进方向)
 - [📄 License](#-license)
@@ -104,6 +105,17 @@ flowchart LR
 - 🔐 JWT Token 认证，支持过期时间配置
 - 🚫 普通用户仅可见本科室记录，管理员可见全部
 
+### 6️⃣ 可视化管理后台（Vue 3 + Element Plus）
+
+| 管理模块 | 功能 | 抽取流程集成 |
+|---|---|---|
+| 📋 **抽取模板管理** | 不同类型病案的抽取字段动态配置（增删改查） | ✅ 按模板字段抽取，替代默认15字段 |
+| 🏥 **ICD编码库管理** | 疾病编码与名称维护，分类筛选、搜索、启停 | ✅ ICD校验优先查编码库 |
+| 📝 **术语词典管理** | 同义词/缩写/别名/口语化术语映射 | ✅ 抽取前自动术语归一化 |
+| 📊 **统计仪表盘** | 各模块数据统计 + 快速入口 | - |
+
+> **技术价值**：将原本硬编码的抽取字段、ICD字典、术语映射全部可视化配置，业务人员无需改代码即可维护系统，大幅提升可维护性和可扩展性。
+
 ---
 
 ## 🏗️ 系统架构
@@ -116,6 +128,7 @@ flowchart TB
         A3["上传抽取"]
         A4["记录管理"]
         A5["审计日志"]
+        A6["⚙️ 管理后台<br/>Vue 3 + Element Plus<br/>模板/ICD/术语"]
     end
 
     subgraph APILayer["⚡ FastAPI 应用层（Uvicorn）"]
@@ -123,16 +136,18 @@ flowchart TB
         B2["📄 文档处理<br/>解析 / 抽取"]
         B3["📋 记录管理<br/>工作流 / 复核"]
         B4["📊 统计与审计<br/>仪表盘 / 日志"]
+        B5["⚙️ 管理后台 API<br/>17个 REST 接口"]
     end
 
     subgraph CoreLayer["🧠 核心业务层"]
-        C1["🔀 抽取融合管道<br/>LLM抽取 + 规则抽取 + 逐字段融合"]
-        C2["🏥 ICD-10 校验器<br/>格式校验 + 字典匹配 + 近邻纠错建议"]
+        C1["🔀 抽取融合管道<br/>术语归一化 + LLM抽取 + 规则抽取 + 逐字段融合"]
+        C2["🏥 ICD-10 校验器<br/>编码库优先 + 格式校验 + 字典匹配 + 近邻纠错"]
         C3["🔄 工作流引擎<br/>状态流转校验 + 操作记录"]
+        C4["📋 配置中心<br/>抽取模板 / ICD编码库 / 术语词典"]
     end
 
     subgraph DataLayer["💾 数据与服务层"]
-        D1["🐬 MySQL 8.0<br/>生产主库<br/>记录 + 审计"]
+        D1["🐬 MySQL 8.0<br/>生产主库<br/>记录 + 审计 + 配置"]
         D2["📄 SQLite<br/>开发 / 降级"]
         D3["🤖 DeepSeek<br/>LLM 抽取"]
         D4["🔍 OCR<br/>PaddleOCR（可选）"]
@@ -141,6 +156,8 @@ flowchart TB
     Frontend -->|"HTTP / JSON"| APILayer
     APILayer --> CoreLayer
     CoreLayer --> DataLayer
+    C4 -->|"动态配置"| C1
+    C4 -->|"编码校验"| C2
 
     style Frontend fill:#e8f4fd,stroke:#4a90d9,stroke-width:2px
     style APILayer fill:#e6f7f0,stroke:#52c41a,stroke-width:2px
@@ -274,6 +291,59 @@ if new_status not in allowed:
     raise HTTPException(400, f"状态流转不合法：{current_status} → {new_status}")
 ```
 
+### ⚙️ 可视化管理后台 (`app/admin_db.py` + `app/admin_api.py` + `admin/`)
+
+将原本硬编码的抽取配置全部可视化、可配置化，业务人员无需改代码即可维护系统。
+
+#### 三大管理模块
+
+| 模块 | 数据库表 | 核心功能 | 抽取流程集成点 |
+|---|---|---|---|
+| 📋 **抽取模板** | `extraction_templates` | 按文档类型配置抽取字段（动态字段编辑器） | `extract_fields(template_name=...)` |
+| 🏥 **ICD编码库** | `icd_codes` | 疾病编码维护、分类、搜索、启停 | `validate_icd()` 优先查库 |
+| 📝 **术语词典** | `term_dictionary` | 同义词/缩写/别名/口语化映射 | `_normalize_terms()` 抽取前归一化 |
+
+#### 抽取流程集成架构
+
+```mermaid
+flowchart LR
+    A["病案文本输入"] --> B["📝 术语归一化<br/>术语词典替换<br/>心梗 → 心肌梗死"]
+    B --> C["📋 字段配置<br/>按模板选择字段<br/>默认15字段"]
+    C --> D["🔀 双引擎抽取<br/>LLM + 规则融合"]
+    D --> E["🏥 ICD校验<br/>编码库优先<br/>内置字典兜底"]
+    E --> F["📤 输出结构化结果"]
+
+    style B fill:#fff0f6,stroke:#eb2f96,stroke-width:2px
+    style C fill:#e6f7ff,stroke:#1890ff,stroke-width:2px
+    style E fill:#f6ffed,stroke:#52c41a,stroke-width:2px
+```
+
+#### 术语归一化核心代码
+
+```python
+def _normalize_terms(text: str) -> str:
+    """术语归一化：用术语词典中的标准术语替换非标准表述。"""
+    mappings = get_all_term_mappings()  # 从数据库加载所有启用的术语映射
+    result = text
+    for term, standard in mappings.items():
+        if term in result:
+            result = result.replace(term, standard)
+    return result
+```
+
+#### ICD 校验优先查库
+
+```python
+def validate_icd(code: str) -> dict:
+    # 1. 优先查询数据库 ICD 编码库
+    db_item = _query_db(code)
+    if db_item:
+        return {"code": code, "in_dictionary": True,
+                "name": db_item["name"], "suggestion": "编码有效（来自编码库）"}
+    # 2. 回退到内置示例字典
+    # 3. 近邻纠错建议
+```
+
 ---
 
 ## 📦 技术栈选型
@@ -288,6 +358,7 @@ if new_status not in allowed:
 | 📄 文档解析 | **PyMuPDF + python-docx + openpyxl + python-pptx** | 覆盖主流办公格式、纯 Python 无系统依赖 |
 | 🔍 OCR | **PaddleOCR（可选）** | 中文识别准确率高、开源免费、可开关 |
 | 🎨 前端 | **原生 HTML + CSS + JS + ECharts** | 零构建、易部署、单页应用、ECharts 图表能力强 |
+| ⚙️ 管理后台 | **Vue 3 + Element Plus + Vite** | 组件化开发、Element Plus 企业级组件、Vite 极速构建、适合复杂表单和CRUD管理 |
 | 🌐 反向代理 | **Nginx** | 静态资源服务 + API 反向代理、负载均衡、生产级稳定 |
 | 🐳 部署 | **Docker + Docker Compose** | 环境一致性、一键部署、易扩展、容器隔离 |
 | 🧪 测试 | **pytest** | 生态成熟、插件丰富、fixtures 机制好 |
@@ -302,11 +373,11 @@ if new_status not in allowed:
 </details>
 
 <details>
-<summary><strong>❓ 为什么不用 React / Vue？</strong></summary>
+<summary><strong>❓ 为什么业务前端用原生 JS，管理后台用 Vue 3？</strong></summary>
 
-- 前端功能以展示和表单为主，不需要复杂状态管理
-- 原生 JS 零构建，直接部署，减少工程化复杂度
-- ECharts CDN 引入即可，满足可视化需求
+- **业务前端**（登录/仪表盘/上传/列表/复核）：以展示和简单表单为主，原生 JS 零构建直接部署，减少工程化复杂度
+- **管理后台**（模板/ICD/术语的CRUD管理）：包含动态字段编辑器、复杂表单、分页表格等交互，Vue 3 + Element Plus 组件化开发效率更高，维护性更好
+- 两者通过 Nginx 统一部署，互不影响
 
 </details>
 
@@ -348,6 +419,45 @@ if new_status not in allowed:
 | `ip_address` | VARCHAR(64) | 操作IP |
 | `created_at` | DATETIME | 操作时间 |
 
+### extraction_templates（抽取模板表）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | BIGINT | 主键 |
+| `name` | VARCHAR(128) | 模板名称 |
+| `doc_type` | VARCHAR(64) | 文档类型（入院记录/出院小结/手术记录等） |
+| `description` | TEXT | 模板描述 |
+| `fields_json` | JSON | 抽取字段配置（字段名/显示名/类型/必填/说明） |
+| `is_active` | TINYINT | 是否启用（1启用/0停用） |
+| `created_at` | DATETIME | 创建时间 |
+| `updated_at` | DATETIME | 更新时间 |
+
+### icd_codes（ICD编码库表）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | BIGINT | 主键 |
+| `code` | VARCHAR(32) | ICD编码（唯一） |
+| `name` | VARCHAR(256) | 疾病名称 |
+| `category` | VARCHAR(64) | 分类（呼吸系统/循环系统等） |
+| `description` | TEXT | 编码说明 |
+| `is_active` | TINYINT | 是否启用 |
+| `created_at` | DATETIME | 创建时间 |
+| `updated_at` | DATETIME | 更新时间 |
+
+### term_dictionary（术语词典表）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | BIGINT | 主键 |
+| `term` | VARCHAR(128) | 术语/缩写/别名（唯一） |
+| `standard_term` | VARCHAR(128) | 标准术语 |
+| `term_type` | VARCHAR(32) | 类型（synonym同义词/abbreviation缩写/alias别名/colloquial口语化） |
+| `description` | TEXT | 术语说明 |
+| `is_active` | TINYINT | 是否启用 |
+| `created_at` | DATETIME | 创建时间 |
+| `updated_at` | DATETIME | 更新时间 |
+
 ---
 
 ## 🌐 API 接口设计
@@ -382,6 +492,28 @@ if new_status not in allowed:
 |---|---|---|
 | `GET` | `/api/stats/overview` | 统计概览（总量/状态分布/ICD分布/趋势） |
 | `GET` | `/api/audit-logs` | 审计日志列表（操作类型筛选） |
+
+### ⚙️ 管理后台接口（17个）
+
+| 模块 | 方法 | 路径 | 说明 |
+|---|---|---|---|
+| **抽取模板** | `GET` | `/api/admin/templates` | 模板列表（分页/搜索/类型筛选） |
+| | `GET` | `/api/admin/templates/{id}` | 模板详情 |
+| | `POST` | `/api/admin/templates` | 创建模板 |
+| | `PUT` | `/api/admin/templates/{id}` | 更新模板 |
+| | `DELETE` | `/api/admin/templates/{id}` | 删除模板 |
+| **ICD编码库** | `GET` | `/api/admin/icd-codes` | 编码列表（分页/搜索/分类筛选） |
+| | `GET` | `/api/admin/icd-codes/search?q=` | 编码搜索（模糊匹配） |
+| | `GET` | `/api/admin/icd-codes/{id}` | 编码详情 |
+| | `POST` | `/api/admin/icd-codes` | 新增编码 |
+| | `PUT` | `/api/admin/icd-codes/{id}` | 更新编码 |
+| | `DELETE` | `/api/admin/icd-codes/{id}` | 删除编码 |
+| **术语词典** | `GET` | `/api/admin/terms` | 术语列表（分页/搜索/类型筛选） |
+| | `GET` | `/api/admin/terms/{id}` | 术语详情 |
+| | `POST` | `/api/admin/terms` | 新增术语 |
+| | `PUT` | `/api/admin/terms/{id}` | 更新术语 |
+| | `DELETE` | `/api/admin/terms/{id}` | 删除术语 |
+| **统计** | `GET` | `/api/admin/stats` | 管理后台统计（各模块数量/启用数） |
 
 ### ⚙️ 系统接口
 
@@ -448,9 +580,25 @@ uvicorn app.main:app --reload --port 8000
 
 | 页面 | 地址 |
 |---|---|
-| 🎨 前端页面 | http://localhost:8000 |
+| 🎨 业务前端页面 | http://localhost:8000 |
+| ⚙️ 管理后台（Vue 3） | http://localhost:5174 |
 | 📖 API 文档 | http://localhost:8000/docs |
 | 💚 健康检查 | http://localhost:8000/healthz |
+
+### ⚙️ 启动管理后台（可选）
+
+```bash
+# 新开终端，进入管理后台目录
+cd admin
+
+# 安装依赖
+npm install
+
+# 启动开发服务器（默认端口 5174，API 代理到 8000）
+npm run dev
+```
+
+访问 http://localhost:5174 进入管理后台，可管理抽取模板、ICD编码库、术语词典。
 
 ### 👤 演示账号
 
@@ -490,21 +638,23 @@ docker compose logs -f app
 ```
 M9T-MedRecordAI/
 ├── app/                          # 🎯 应用主目录
-│   ├── main.py                   # FastAPI 主应用（16个 API 接口）
+│   ├── main.py                   # FastAPI 主应用（33个 API 接口）
 │   ├── config.py                 # ⚙️ 配置中心（环境变量统一读取）
 │   ├── auth.py                   # 🔐 JWT 认证 + 科室级权限隔离
 │   ├── db.py                     # 💾 数据持久化（MySQL/SQLite双后端 + 审计日志 + 统计）
+│   ├── admin_db.py               # ⚙️ 管理后台数据库（3张配置表的CRUD）
+│   ├── admin_api.py              # ⚙️ 管理后台 API（17个REST接口）
 │   ├── schemas.py                # 📊 Pydantic 数据模型（请求/响应校验）
 │   ├── llm_client.py             # 🤖 LLM 客户端封装（DeepSeek 兼容）
 │   ├── chunker.py                # 📄 语义分片（标题/段落感知）
 │   ├── extractor/                # 🔀 抽取引擎核心
-│   │   ├── pipeline.py           # 融合管道（LLM+规则+ICD校验）
+│   │   ├── pipeline.py           # 融合管道（术语归一化+LLM+规则+ICD校验+模板字段）
 │   │   ├── llm_extractor.py      # LLM 抽取引擎
 │   │   ├── rule_extractor.py     # 规则抽取引擎（正则+关键词）
-│   │   └── fields.py             # 15 类字段定义
+│   │   └── fields.py             # 15 类默认字段定义
 │   ├── icd/                      # 🏥 ICD-10 校验模块
-│   │   ├── icd_validator.py      # 三层校验器（格式+字典+纠错）
-│   │   └── icd_sample.json       # 36 条高频编码字典
+│   │   ├── icd_validator.py      # 三层校验器（编码库优先+格式+字典+纠错）
+│   │   └── icd_sample.json       # 36 条高频编码字典（兜底用）
 │   ├── eval/                     # 📈 评测体系
 │   │   └── run_eval.py           # 逐字段比对 + 指标计算
 │   └── parser/                   # 📄 文档解析器（7种格式）
@@ -515,13 +665,27 @@ M9T-MedRecordAI/
 │       ├── pptx_parser.py        # PPT 解析
 │       ├── text_parser.py        # TXT/Markdown 解析
 │       └── image_parser.py       # 图片 OCR 解析
+├── admin/                        # ⚙️ 可视化管理后台（Vue 3 + Element Plus）
+│   ├── src/
+│   │   ├── views/
+│   │   │   ├── Dashboard.vue     # 📊 仪表盘（统计卡片+快速入口）
+│   │   │   ├── TemplateManage.vue # 📋 抽取模板管理（动态字段编辑器）
+│   │   │   ├── IcdManage.vue     # 🏥 ICD编码库管理
+│   │   │   └── TermManage.vue    # 📝 术语词典管理
+│   │   ├── api/index.js          # API 封装
+│   │   ├── router.js             # 路由配置
+│   │   ├── App.vue               # 布局组件（侧边栏+顶部栏）
+│   │   └── main.js               # 应用入口
+│   ├── vite.config.js            # Vite 配置（端口5174+API代理）
+│   ├── package.json              # 依赖配置
+│   └── README.md                 # 管理后台说明
 ├── data/                         # 📊 数据目录
 │   └── gen_samples.py            # 样例数据生成脚本
 ├── deploy/                       # 🚀 部署相关
 │   ├── docker-compose.yml        # Docker Compose（App+MySQL+Nginx）
 │   ├── Dockerfile                # Docker 镜像构建
 │   ├── nginx.conf                # Nginx 反向代理配置
-│   └── html/                     # 🎨 前端页面
+│   └── html/                     # 🎨 业务前端页面
 │       └── index.html            # 单页应用（登录/仪表盘/上传/列表/复核/审计）
 ├── scripts/                      # 🔧 运维脚本
 │   ├── init_db.sql               # 数据库初始化
@@ -545,7 +709,10 @@ M9T-MedRecordAI/
 
 ### 📅 短期（1-3个月）
 
-- [ ] 接入完整 ICD-10 编码库（2万+编码），替换演示用 36 条字典
+- [x] 可视化管理后台（抽取模板/ICD编码库/术语词典）
+- [x] ICD 编码库可配置化（通过管理后台维护，支持2万+编码）
+- [x] 抽取字段模板化（按文档类型动态配置抽取字段）
+- [x] 术语归一化（同义词/缩写/别名/口语化自动替换）
 - [ ] ICD-10-CM 中国临床扩展版支持
 - [ ] 前端字段修改体验优化（批量编辑、撤销重做）
 - [ ] 抽取结果导出 Excel/PDF
