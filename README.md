@@ -51,19 +51,21 @@
 
 > **技术难点**：解决 LLM 不稳定、幻觉问题，同时保留规则引擎的确定性，融合后兼顾准确率与召回率。
 
-### 2️⃣ ICD-10 三层校验闭环
+### 2️⃣ ICD-10 四层校验闭环
 
 ```mermaid
 flowchart LR
-    A["① 格式校验<br/>正则匹配<br/>ICD-10标准"] --> B["② 字典匹配<br/>36条高频编码<br/>可扩展2万+"]
-    B --> C["③ 近邻纠错<br/>前缀相似度<br/>Top-1推荐"]
+    A["① 归一化<br/>去空格/转大写"] --> B["② 格式校验<br/>正则匹配<br/>ICD-10标准"]
+    B --> C["③ 字典匹配<br/>编码库优先<br/>内置字典兜底"]
+    C --> D["④ 近邻纠错<br/>前缀相似度<br/>Top-1推荐"]
 
-    style A fill:#e6f7ff,stroke:#1890ff,stroke-width:2px
-    style B fill:#fff7e6,stroke:#faad14,stroke-width:2px
-    style C fill:#f6ffed,stroke:#52c41a,stroke-width:2px
+    style A fill:#f9f0ff,stroke:#722ed1,stroke-width:2px
+    style B fill:#e6f7ff,stroke:#1890ff,stroke-width:2px
+    style C fill:#fff7e6,stroke:#faad14,stroke-width:2px
+    style D fill:#f6ffed,stroke:#52c41a,stroke-width:2px
 ```
 
-> **技术难点**：ICD 编码是医保结算核心数据，错误编码会导致医保拒付，三层校验将编码错误率降至最低。
+> **技术难点**：ICD 编码是医保结算核心数据，错误编码会导致医保拒付，四层校验将编码错误率降至最低。
 
 ### 3️⃣ 工作流状态机 + 人工复核闭环
 
@@ -189,7 +191,7 @@ flowchart TD
 
     D["🔀 融合层（逐字段决策）<br/>1. LLM 值非空 → 用 LLM 值<br/>2. LLM 值为空 → 用规则值补位<br/>3. 都为空 → null<br/>4. 标注字段来源和置信度"] --> E
 
-    E["🏥 ICD-10 三层校验"] --> F
+    E["🏥 ICD-10 四层校验"] --> F
 
     F["📤 输出：15字段 + 来源 + 置信度<br/>+ ICD校验结果 + 抽取模式"]
 
@@ -219,11 +221,11 @@ def _merge(llm_fields, rule_fields):
 
 ### 🏥 ICD-10 校验器 (`app/icd/icd_validator.py`)
 
-**三层校验流程：**
+**四层校验流程：**
 
-1. **归一化**：去空格、转大写、全角转半角
-2. **格式校验**：正则 `^[A-Z]\d{2}(\.\d{1,2})?$`
-3. **字典匹配**：在 `icd_sample.json` 中查询编码是否存在
+1. **归一化**：去空格、转大写（`strip()` + `upper()`）
+2. **格式校验**：正则 `^[A-Za-z]\d{2}(?:\.\d{1,2})?$`（兼容 ICD-10 中国临床版，小数位最多2位）
+3. **字典匹配**：**优先查询数据库 `icd_codes` 编码库**，未命中再回退到内置 `icd_sample.json` 示例字典
 4. **近邻纠错**：未命中时按前缀相似度排序，推荐 Top-1 最接近编码
 
 **校验结果示例：**
@@ -653,7 +655,7 @@ M9T-MedRecordAI/
 │   │   ├── rule_extractor.py     # 规则抽取引擎（正则+关键词）
 │   │   └── fields.py             # 15 类默认字段定义
 │   ├── icd/                      # 🏥 ICD-10 校验模块
-│   │   ├── icd_validator.py      # 三层校验器（编码库优先+格式+字典+纠错）
+│   │   ├── icd_validator.py      # 四层校验器（归一化+格式+编码库优先+纠错）
 │   │   └── icd_sample.json       # 36 条高频编码字典（兜底用）
 │   ├── eval/                     # 📈 评测体系
 │   │   └── run_eval.py           # 逐字段比对 + 指标计算
