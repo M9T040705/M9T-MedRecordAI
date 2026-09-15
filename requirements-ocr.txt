@@ -1,0 +1,7 @@
+# OCR 可选依赖（重依赖，单独安装）
+# 安装命令：pip install -r requirements-ocr.txt
+# 建议 Python 3.10/3.11 环境
+
+paddlepaddle>=2.5.0
+paddleocr>=2.7.0
+Pillow>=10.0
